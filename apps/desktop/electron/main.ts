@@ -1494,6 +1494,11 @@ const primaryExitRecovery = createBackendExitRecoveryLatch()
 // byte-for-byte the single-backend behavior.
 const backendPool = new Map() // profile -> { process, port, token, connectionPromise, lastActiveAt }
 const profileDeletionGate = new ProfileDeletionGate()
+// Separate gate for renames: ensureBackend does not check this gate, so a
+// concurrent reconnect for the old-name profile is not permanently blocked
+// (the renderer would treat "is being deleted" as permanent and evict the
+// secondary). The rename lifecycle already serializes via teardown-and-wait.
+const profileRenameGate = new ProfileDeletionGate()
 // Keep the pool light: cap concurrent profile backends (LRU eviction) and reap
 // idle ones. A user idles at exactly the primary backend; pool backends only
 // exist while a non-primary profile is actively being chatted through.
@@ -16803,7 +16808,15 @@ ipcMain.handle('hermes:api', async (_event, request) => {
     return handleHermesApiRequest(request)
   }
 
-  const releaseProfileDeletion = profileDeletionGate.acquire(mutatingProfile)
+  // Renames use a separate gate that ensureBackend does not check: a
+  // concurrent reconnect during a rename is transient (the new-name backend
+  // will be available once complete) and must not permanently evict the
+  // renderer's secondary entry. Deletes use the shared deletion gate so
+  // ensureBackend rejects respawns of a profile whose directory is gone.
+  const renamingProfile = deletingProfile ? null : profileRenameFromRequest(request)?.oldName ?? null
+  const releaseProfileDeletion = renamingProfile
+    ? profileRenameGate.acquire(renamingProfile)
+    : profileDeletionGate.acquire(mutatingProfile)
 
   return handleHermesApiRequest(request).finally(releaseProfileDeletion)
 })
