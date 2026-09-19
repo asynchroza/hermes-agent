@@ -19,6 +19,7 @@ import { AlertTriangle } from '@/lib/icons'
 import { slug } from '@/lib/sanitize'
 import { retireLocalProfileGateways } from '@/store/gateway'
 import { migrateTilesForProfile } from '@/store/session-states'
+import { httpErrorDetail } from '@/lib/gateway-rpc'
 
 import { isValidProfileName } from './create-profile-dialog'
 
@@ -109,7 +110,7 @@ export function RenameProfileDialog({
       window.setTimeout(onClose, 800)
     } catch (err) {
       setStatus('idle')
-      setError(err instanceof Error ? err.message : p.failedRename)
+      setError(httpErrorDetail(err, p.failedRename))
     }
   }
 

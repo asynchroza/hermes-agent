@@ -48,3 +48,33 @@ export function isBusySessionModelSwitch(error: unknown): boolean {
 
   return /session busy/i.test(message) && /switching models/i.test(message)
 }
+
+/**
+ * Extract the human-readable `detail` string from an httpStatusError whose
+ * message is formatted as `"<status>: <json-body>"` (FastAPI 4xx responses).
+ * Returns the detail string when present, otherwise the full error message,
+ * or the fallback when the error carries no message.
+ */
+export function httpErrorDetail(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+
+  if (!message) {
+    return fallback
+  }
+
+  const start = message.indexOf('{')
+
+  if (start >= 0) {
+    try {
+      const body = JSON.parse(message.slice(start)) as Record<string, unknown>
+
+      if (typeof body.detail === 'string' && body.detail) {
+        return body.detail
+      }
+    } catch {
+      // not JSON — fall through
+    }
+  }
+
+  return message
+}
